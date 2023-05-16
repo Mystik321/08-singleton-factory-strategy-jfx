@@ -1,7 +1,8 @@
 package ohm.softa.a08.controller;
 
 import com.google.gson.Gson;
-import ohm.softa.a08.api.OpenMensaAPI;
+import ohm.softa.a08.filtering.MealFilterFactory;
+import ohm.softa.a08.services.OpenMensaAPIService;
 import ohm.softa.a08.model.Meal;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -16,15 +17,12 @@ import org.apache.logging.log4j.Logger;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
-import retrofit2.Retrofit;
-import retrofit2.converter.gson.GsonConverterFactory;
 
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Controller for main.fxml
@@ -42,8 +40,6 @@ public class MainController implements Initializable {
 	 * DateFormat instance to generate required date format string for OpenMensa API
 	 */
 	private static final DateFormat openMensaDateFormat;
-
-	private final OpenMensaAPI api;
 	private final ObservableList<Meal> meals;
 	private final Gson gson;
 
@@ -73,15 +69,6 @@ public class MainController implements Initializable {
 	public MainController() {
 		meals = FXCollections.observableArrayList();
 		gson = new Gson();
-
-		/* initialize Retrofit instance */
-		var retrofit = new Retrofit.Builder()
-			.addConverterFactory(GsonConverterFactory.create(gson))
-			.baseUrl("http://openmensa.org/api/v2/")
-			.build();
-
-		/* create OpenMensaAPI instance */
-		api = retrofit.create(OpenMensaAPI.class);
 	}
 
 	/**
@@ -103,7 +90,9 @@ public class MainController implements Initializable {
 	 */
 	@FXML
 	public void doGetMeals() {
-		api.getMeals(openMensaDateFormat.format(new Date())).enqueue(new Callback<>() {
+		var currentFilterName = filterChoiceBox.getSelectionModel().getSelectedItem();
+		var filter = MealFilterFactory.getStrategy(currentFilterName);
+		OpenMensaAPIService.getInstance().getOpenMensaAPI().getMeals(openMensaDateFormat.format(new Date())).enqueue(new Callback<>() {
 			@Override
 			public void onResponse(Call<List<Meal>> call, Response<List<Meal>> response) {
 				logger.debug("Got response");
@@ -121,13 +110,7 @@ public class MainController implements Initializable {
 					}
 
 					meals.clear();
-
-					if ("Vegetarian".equals(filterChoiceBox.getValue()))
-						meals.addAll(response.body().stream()
-							.filter(Meal::isVegetarian)
-							.collect(Collectors.toList()));
-					else
-						meals.addAll(response.body());
+					meals.addAll(filter.filter(response.body()));
 				});
 			}
 
